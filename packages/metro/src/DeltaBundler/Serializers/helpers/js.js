@@ -26,6 +26,7 @@ export type Options = $ReadOnly<{
   projectRoot: string,
   serverRoot: string,
   sourceUrl: ?string,
+  baseUrl: ?string,
   ...
 }>;
 
@@ -40,13 +41,18 @@ function wrapModule(module: Module<>, options: Options): string {
   return addParamsToDefineCall(output.data.code, ...params);
 }
 
-function getModuleParams(module: Module<>, options: Options): Array<mixed> {
+function prefixWithBaseUrl(baseUrl, url) {
+  if (!baseUrl) return url;
+  return baseUrl.replace(/\/$/, '') + '/' + url.replace(/^\//, '');
+}
+
+function getModuleParams(module, options) {
   const moduleId = options.createModuleId(module.path);
 
-  const paths: {[moduleID: number | string]: mixed} = {};
+  const paths = {};
   let hasPaths = false;
   const dependencyMapArray = Array.from(module.dependencies.values()).map(
-    dependency => {
+    function(dependency) {
       const id = options.createModuleId(dependency.absolutePath);
       if (options.includeAsyncPaths && dependency.data.data.asyncType != null) {
         hasPaths = true;
@@ -70,7 +76,7 @@ function getModuleParams(module: Module<>, options: Options): Array<mixed> {
           options.serverRoot,
           dependency.absolutePath,
         );
-        paths[id] =
+        let constructedUrl =
           '/' +
           path.join(
             path.dirname(bundlePath),
@@ -79,6 +85,10 @@ function getModuleParams(module: Module<>, options: Options): Array<mixed> {
           ) +
           '.bundle?' +
           searchParams.toString();
+        if (options.baseUrl) {
+          constructedUrl = prefixWithBaseUrl(options.baseUrl, constructedUrl);
+        }
+        paths[id] = constructedUrl;
       }
       return id;
     },

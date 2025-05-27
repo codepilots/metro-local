@@ -215,6 +215,7 @@ type WatcherConfigT = {
 export type InputConfigT = $ReadOnly<
   Partial<{
     ...MetalConfigT,
+    baseUrl?: string,
     ...$ReadOnly<{
       cacheStores:
         | $ReadOnlyArray<CacheStore<TransformResult<>>>
@@ -241,6 +242,7 @@ export type MetroConfig = InputConfigT;
 
 export type IntermediateConfigT = {
   ...MetalConfigT,
+  baseUrl?: string,
   ...{
     resolver: ResolverConfigT,
     server: ServerConfigT,
@@ -253,6 +255,7 @@ export type IntermediateConfigT = {
 
 export type ConfigT = $ReadOnly<{
   ...$ReadOnly<MetalConfigT>,
+  baseUrl?: string,
   ...$ReadOnly<{
     resolver: $ReadOnly<ResolverConfigT>,
     server: $ReadOnly<ServerConfigT>,

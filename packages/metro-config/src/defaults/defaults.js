@@ -80,3 +80,5 @@ exports.noopPerfLoggerFactory = (): RootPerfLogger => {
   }
   return new Logger();
 };
+
+exports.baseUrl = '';

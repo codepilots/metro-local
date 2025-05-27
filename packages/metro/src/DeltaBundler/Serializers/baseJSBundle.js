@@ -22,6 +22,11 @@ import type {Bundle} from 'metro-runtime/src/modules/types.flow';
 const getAppendScripts = require('../../lib/getAppendScripts');
 const processModules = require('./helpers/processModules');
 
+function prefixWithBaseUrl(baseUrl, url) {
+  if (!baseUrl) return url;
+  return baseUrl.replace(/\/$/, '') + '/' + url.replace(/^\//, '');
+}
+
 function baseJSBundle(
   entryPoint: string,
   preModules: $ReadOnlyArray<Module<>>,
@@ -55,6 +60,11 @@ function baseJSBundle(
     (a: Module<MixedOutput>, b: Module<MixedOutput>) =>
       options.createModuleId(a.path) - options.createModuleId(b.path),
   );
+
+  // Example usage for sourceMapUrl:
+  if (options.baseUrl && options.sourceMapUrl) {
+    options.sourceMapUrl = prefixWithBaseUrl(options.baseUrl, options.sourceMapUrl);
+  }
 
   const postCode = processModules(
     getAppendScripts(entryPoint, [...preModules, ...modules], {

@@ -27,27 +27,30 @@ type Options = $ReadOnly<{
   includeAsyncPaths: boolean,
   projectRoot: string,
   serverRoot: string,
+  baseUrl?: string,
   ...
 }>;
 
+function prefixWithBaseUrl(baseUrl, url) {
+  if (!baseUrl) return url;
+  return baseUrl.replace(/\/$/, '') + '/' + url.replace(/^\//, '');
+}
+
 function generateModules(
-  sourceModules: Iterable<Module<>>,
-  graph: ReadOnlyGraph<>,
-  options: Options,
+  sourceModules,
+  graph,
+  options,
 ): $ReadOnlyArray<HmrModule> {
   const modules = [];
 
   for (const module of sourceModules) {
     if (isJsModule(module)) {
       // Construct a bundle URL for this specific module only
-      const getURL = (extension: 'bundle' | 'map') => {
+      const getURL = function (extension) {
         const moduleUrl = url.parse(url.format(options.clientUrl), true);
-        // the legacy url object is parsed with both "search" and "query" fields.
-        // for the "query" field to be used when formatting the object bach to string, the "search" field must be empty.
-        // https://nodejs.org/api/url.html#urlformaturlobject:~:text=If%20the%20urlObject.search%20property%20is%20undefined
         moduleUrl.search = '';
         moduleUrl.pathname = path.relative(
-          options.serverRoot ?? options.projectRoot,
+          options.serverRoot || options.projectRoot,
           path.join(
             path.dirname(module.path),
             path.basename(module.path, path.extname(module.path)) +
@@ -56,20 +59,24 @@ function generateModules(
           ),
         );
         delete moduleUrl.query.excludeSource;
-        return url.format(moduleUrl);
+        let constructedUrl = url.format(moduleUrl);
+        if (options.baseUrl) {
+          constructedUrl = prefixWithBaseUrl(options.baseUrl, constructedUrl);
+        }
+        return constructedUrl;
       };
 
       const sourceMappingURL = getURL('map');
       const sourceURL = jscSafeUrl.toJscSafeUrl(getURL('bundle'));
       const code =
         prepareModule(module, graph, options) +
-        `\n//# sourceMappingURL=${sourceMappingURL}\n` +
-        `//# sourceURL=${sourceURL}\n`;
+        '\n//# sourceMappingURL=' + sourceMappingURL + '\n' +
+        '//# sourceURL=' + sourceURL + '\n';
 
       modules.push({
         module: [options.createModuleId(module.path), code],
-        sourceMappingURL,
-        sourceURL,
+        sourceMappingURL: sourceMappingURL,
+        sourceURL: sourceURL,
       });
     }
   }

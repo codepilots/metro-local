@@ -15,6 +15,7 @@ const path = require('path');
 const ROOT_PATH = path.resolve(__dirname, 'basic_bundle');
 
 module.exports = {
+  baseUrl: '/my/base/',
   cacheStores: [],
   maxWorkers: 1,
   projectRoot: ROOT_PATH,

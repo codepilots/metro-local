@@ -216,6 +216,7 @@ export interface WatcherInputConfigT
 
 export interface InputConfigT
   extends Partial<Omit<MetalConfigT, 'cacheStores'>> {
+  readonly baseUrl?: string;
   readonly cacheStores?:
     | ReadonlyArray<CacheStore<TransformResult>>
     | ((metroCache: MetroCache) => ReadonlyArray<CacheStore<TransformResult>>);
@@ -230,6 +231,7 @@ export interface InputConfigT
 export type MetroConfig = InputConfigT;
 
 export interface IntermediateConfigT extends MetalConfigT {
+  baseUrl?: string;
   resolver: ResolverConfigT;
   server: ServerConfigT;
   serializer: SerializerConfigT;
@@ -239,6 +241,7 @@ export interface IntermediateConfigT extends MetalConfigT {
 }
 
 export interface ConfigT extends Readonly<MetalConfigT> {
+  readonly baseUrl?: string;
   readonly resolver: Readonly<ResolverConfigT>;
   readonly server: Readonly<ServerConfigT>;
   readonly serializer: Readonly<SerializerConfigT>;

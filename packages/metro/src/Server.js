@@ -151,10 +151,12 @@ class Server {
   _sourceRequestRoutingMap: $ReadOnlyArray<
     [pathnamePrefix: string, normalizedRootDir: string],
   >;
+  _baseUrl: string;
 
   constructor(config: ConfigT, options?: ServerOptions) {
     this._config = config;
     this._serverOptions = options;
+    this._baseUrl = config.baseUrl || '';
 
     if (this._config.resetCache) {
       this._config.cacheStores.forEach((store: CacheStore<TransformResult<>>) =>
@@ -264,10 +266,11 @@ class Server {
       inlineSourceMap: serializerOptions.inlineSourceMap,
       serverRoot:
         this._config.server.unstable_serverRoot ?? this._config.projectRoot,
-      shouldAddToIgnoreList: (module: Module<>) =>
+      shouldAddToIgnoreList: (module) =>
         this._shouldAddModuleToIgnoreList(module),
-      getSourceUrl: (module: Module<>) =>
+      getSourceUrl: (module) =>
         this._getModuleSourceUrl(module, serializerOptions.sourcePaths),
+      baseUrl: this._baseUrl, // Pass baseUrl to all serializers
     };
     let bundleCode = null;
     let bundleMap = null;
@@ -381,8 +384,8 @@ class Server {
       processModuleFilter: this._config.serializer.processModuleFilter,
       assetPlugins: this._config.transformer.assetPlugins,
       platform: transformOptions.platform,
-      projectRoot: this._getServerRootDir(),
-      publicPath: this._config.transformer.publicPath,
+      publicPath: this._prefixWithBaseUrl('/assets'),
+      projectRoot: this._config.projectRoot,
     });
   }
 
@@ -537,6 +540,21 @@ class Server {
     );
   }
 
+  // Utility to prefix a path with baseUrl
+  _prefixWithBaseUrl(pathname) {
+    if (!this._baseUrl) return pathname;
+    return this._baseUrl.replace(/\/$/, '') + (pathname.startsWith('/') ? '' : '/') + pathname;
+  }
+
+  // Utility to strip baseUrl from a pathname for internal routing
+  _stripBaseUrl(pathname) {
+    if (!this._baseUrl) return pathname;
+    if (pathname.startsWith(this._baseUrl)) {
+      return pathname.slice(this._baseUrl.length) || '/';
+    }
+    return pathname;
+  }
+
   async _processRequest(
     req: IncomingMessage,
     res: ServerResponse,
@@ -555,9 +573,12 @@ class Server {
       host,
       protocol: 'http',
     });
-    const pathname = urlObj.pathname || '';
+    // Use baseUrl-aware path matching
+    let pathname = urlObj.pathname || '';
     const buildNumber = this.getNewBuildNumber();
-    if (pathname.endsWith('.bundle')) {
+    // Remove baseUrl prefix for internal routing
+    const strippedPathname = this._stripBaseUrl(pathname);
+    if (strippedPathname.endsWith('.bundle')) {
       const options = this._parseOptions(formattedUrl);
       await this._processBundleRequest(req, res, options, {
         buildNumber,
@@ -566,12 +587,10 @@ class Server {
             key: buildNumber,
           }) ?? noopLogger,
       });
-
       if (this._serverOptions && this._serverOptions.onBundleBuilt) {
         this._serverOptions.onBundleBuilt(pathname);
       }
-    } else if (pathname.endsWith('.map')) {
-      // Chrome dev tools may need to access the source maps.
+    } else if (strippedPathname.endsWith('.map')) {
       res.setHeader('Access-Control-Allow-Origin', 'devtools://devtools');
       await this._processSourceMapRequest(
         req,
@@ -582,7 +601,7 @@ class Server {
           bundlePerfLogger: noopLogger,
         },
       );
-    } else if (pathname.endsWith('.assets')) {
+    } else if (strippedPathname.endsWith('.assets')) {
       await this._processAssetsRequest(
         req,
         res,
@@ -592,16 +611,15 @@ class Server {
           bundlePerfLogger: noopLogger,
         },
       );
-    } else if (pathname.startsWith('/assets/') || pathname === '/assets') {
+    } else if (strippedPathname.startsWith('/assets/') || strippedPathname === '/assets') {
       await this._processSingleAssetRequest(req, res);
-    } else if (pathname === '/symbolicate') {
+    } else if (strippedPathname === '/symbolicate') {
       await this._symbolicate(req, res);
     } else {
       let handled = false;
-      for (const [pathnamePrefix, normalizedRootDir] of this
-        ._sourceRequestRoutingMap) {
-        if (pathname.startsWith(pathnamePrefix)) {
-          const relativePathname = pathname.substr(pathnamePrefix.length);
+      for (const [pathnamePrefix, normalizedRootDir] of this._sourceRequestRoutingMap) {
+        if (strippedPathname.startsWith(pathnamePrefix)) {
+          const relativePathname = strippedPathname.substr(pathnamePrefix.length);
           await this._processSourceRequest(
             relativePathname,
             normalizedRootDir,
@@ -1534,23 +1552,25 @@ class Server {
   _getModuleSourceUrl(module: Module<>, mode: SourcePathsMode): string {
     switch (mode) {
       case SourcePathsMode.ServerUrl:
-        for (const [pathnamePrefix, normalizedRootDir] of this
-          ._sourceRequestRoutingMap) {
+        for (const [pathnamePrefix, normalizedRootDir] of this._sourceRequestRoutingMap) {
           if (module.path.startsWith(normalizedRootDir + path.sep)) {
             const relativePath = module.path.slice(
               normalizedRootDir.length + 1,
             );
             const relativePathPosix = relativePath.split(path.sep).join('/');
-            return pathnamePrefix + encodeURI(relativePathPosix);
+            // Prefix with baseUrl for server URLs
+            return this._prefixWithBaseUrl(pathnamePrefix + encodeURI(relativePathPosix));
           }
         }
         // Ordinarily all files should match one of the roots above. If they
         // don't, try to preserve useful information, even if fetching the path
         // from Metro might fail.
         const modulePathPosix = module.path.split(path.sep).join('/');
-        return modulePathPosix.startsWith('/')
-          ? encodeURI(modulePathPosix)
-          : '/' + encodeURI(modulePathPosix);
+        return this._prefixWithBaseUrl(
+          modulePathPosix.startsWith('/')
+            ? encodeURI(modulePathPosix)
+            : '/' + encodeURI(modulePathPosix)
+        );
       case SourcePathsMode.Absolute:
         return module.path;
     }
